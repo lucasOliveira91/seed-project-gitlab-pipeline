@@ -1,0 +1,19 @@
+<config>
+    <input>
+        <!-- Directly overwrite the original file after confusion ,out The road force pointed to is confused jar -->
+        <jar in="ar-valecard-0.0.1-SNAPSHOT.jar" out="ar-valecard-0.0.1-SNAPSHOT.jar" />
+    </input>
+
+    <keep-names>
+        <!-- protected/public All reserved names  -->
+        <class access="protected+">
+            <field access="protected+" />
+            <method access="protected+" />
+        </class>
+    </keep-names>
+    <ignore-classes>
+        <!--  Be careful ：spring Framework related documents need to be excluded , Avoid startup error  -->
+        <class template="class *springframework*"/>
+    </ignore-classes>
+
+</config>

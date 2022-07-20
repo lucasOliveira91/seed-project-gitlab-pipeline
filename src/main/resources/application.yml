@@ -1,0 +1,15 @@
+server.port: 8080
+spring:
+  application:
+    name: valecard/ar-valecard
+
+cred:
+  user: ${user}
+  password: ${password}
+
+spring.cloud.vault:
+  host: 168.61.35.67
+  port: 30466
+  scheme: http
+  token: hvs.cn7GTjjU3iaOC49eHpxMThmf
+spring.config.import: vault://

@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ar-valecard
+  namespace: default
+  labels:
+    app: ar-valecard
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: ar-valecard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ar-valecard
+  labels:
+    app: ar-valecard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ar-valecard
+  template:
+    metadata:
+      labels:
+        app: ar-valecard
+      annotations:
+        'consul.hashicorp.com/connect-inject': 'true'
+    spec:
+      containers:
+        - name: ar-valecard
+          image: gru.ocir.io/grrbaghhxgrl/sample:1.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 40
+            timeoutSeconds: 2
+            periodSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 100
+            timeoutSeconds: 2
+            periodSeconds: 8
+            failureThreshold: 1
+      imagePullSecrets:
+        - name: registry.gitlab.com

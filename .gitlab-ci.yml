@@ -1,0 +1,119 @@
+variables:
+  DOCKER_DRIVER: overlay
+  SPRING_PROFILES_ACTIVE: gitlab-ci
+
+stages:
+  - build
+  - package
+  - test
+  - image-build
+  - image-push
+  - deploy
+  - performace-and-security
+#
+#maven-build:
+#  image: maven:3.6.3-jdk-11
+#  stage: package
+#  script: "mvn install"
+#  artifacts:
+#    paths:
+#      - target/*.jar
+#
+#nexus-deploy:
+#  image: maven:3.6.3-jdk-11
+#  stage: image-push
+#  script:
+#    - mvn $MAVEN_CLI_OPTS deploy -Dmaven.test.skip=true
+#  only:
+#    - main
+#  dependencies:
+#    - docker-build
+
+build:
+  image: gradle:7.3.0-jdk11-alpine
+  stage: build
+  script:
+    - ./gradlew clean bootJar
+  artifacts:
+    paths:
+      - build/libs/*.jar
+
+performace-test:
+  stage: performace-and-security
+  image:
+    name: justb4/jmeter:latest
+    entrypoint: [""]
+  script:
+    - mkdir testresults
+    - /entrypoint.sh -n -t ./performace-test.jmx -l ./testresults.log -e -o ./testresults
+  only:
+    - main
+  artifacts:
+    paths:
+      - testresults
+
+sonarqube-check:
+  image: gradle:7.3.0-jdk11-alpine
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: gradle sonarqube
+  only:
+    - main
+
+penTest:
+  stage: performace-and-security
+  image: docker:latest
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: "tcp://docker:2375"
+  services:
+    - docker:dind
+  script:
+    - docker pull owasp/zap2docker-stable:latest || echo
+    - docker run --name zap-container --rm -v $(pwd):/zap/wrk -u $(id -u ${USER}):$(id -g ${USER}) owasp/zap2docker-stable zap-baseline.py -I -t http://seedts-k8s.eastus.cloudapp.azure.com:32606  -r report.html
+  artifacts:
+    paths:
+      - report.html
+
+nexus-deploy:
+  image: gradle:7.3.0-jdk11-alpine
+  stage: image-push
+  script:
+    - ./gradlew clean build publish
+  only:
+    - main
+  dependencies:
+    - docker-build
+
+docker-build:
+  image: docker:latest
+  stage: image-build
+  services:
+    - docker:19.03.0-dind
+  before_script:
+    - docker login -u "$OKE_REGISTRY_USER" -p "$OKE_REGISTRY_PASSWORD" $OKE_REGISTRY
+  script:
+    - docker info
+    - docker build  --pull -t "$OKE_REGISTRY_IMAGE" .
+    - docker tag "$OKE_REGISTRY_IMAGE" "$OKE_REGISTRY_NEW_IMAGE"
+    - docker push "$OKE_REGISTRY_NEW_IMAGE"
+  only:
+    - main
+  dependencies:
+    - build
+
+k8s-deploy:
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  stage: deploy
+  script:
+    - kubectl config get-contexts
+    - kubectl config use-context seedts-devops/ar-valecard:k8sv2
+    - kubectl apply -f ./deployment.yml
+    - kubectl rollout restart deployment ar-valecard
